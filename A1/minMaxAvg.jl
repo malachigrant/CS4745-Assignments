@@ -1,6 +1,7 @@
 function minMaxAvg()
   print("Enter size of data set (>1): ");
   count = parse(Int32, readline());
+  println("Input numbers, one per line:");
   num = parse(Float64, readline());
   max = num;
   min = num;
@@ -15,9 +16,7 @@ function minMaxAvg()
     sum += num;
   end
   avg = sum/count;
-  println("Max is: $max");
-  println("Min is: $min");
-  println("Average is: $avg");
+  println("Min: $min, Max: $max, Average: $avg");
 end
 
 minMaxAvg();
