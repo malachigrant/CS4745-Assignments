@@ -10,6 +10,7 @@ function reduction_threads!(a)
   end
 end
 
-a = rand(Float64, 2^20);
+a = rand(Float64, 2^25);
 @btime reduction_threads!(a);
-# println(a);
+
+# @btime sum(a);
