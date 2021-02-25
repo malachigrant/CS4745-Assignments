@@ -62,3 +62,16 @@ function satisfy()
     end
     return count
 end
+
+function satisfy_CUDAnative()
+    A_d = CUDA.zeros(1<<NBITS-1)
+    @cuda threads=1<<NBITS satisfyKernel(A_d)
+end
+
+function satisfyKernel(A_d)
+    id = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+    if (id <= 1<<NBITS-1)
+        A_d[id] = check(id)
+    end
+    nothing
+end
