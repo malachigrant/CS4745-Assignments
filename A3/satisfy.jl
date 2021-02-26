@@ -1,3 +1,4 @@
+using CUDA, BenchmarkTools
 const NBITS = 24
 
 function extract_bits(val)
@@ -63,15 +64,89 @@ function satisfy()
     return count
 end
 
-function satisfy_CUDAnative()
-    A_d = CUDA.zeros(1<<NBITS-1)
-    @cuda threads=1<<NBITS satisfyKernel(A_d)
+function reduction_CuArray(A_d)
+    n = length(A_d)
+    @views @inbounds for i = Int(log(2, n)-1):-1:0
+      A_d[1:2^i] .+= A_d[2^i+1:2^(i+1)]
+    end
+    synchronize()
+    return Int64(A_d[1])
+  end
+
+function getBoolFromNum(num, i)
+    return (num>>(NBITS-i) & 1) == 1
+end
+
+function CUDAnativeCheck(id)
+    return ((!getBoolFromNum(id, 11) || getBoolFromNum(id, 12) || !getBoolFromNum(id, 6)) && 
+    (!getBoolFromNum(id, 17) || getBoolFromNum(id, 14) || !getBoolFromNum(id, 4)) && 
+    (getBoolFromNum(id, 22) || getBoolFromNum(id, 1) || getBoolFromNum(id, 23)) && 
+    (getBoolFromNum(id, 15) || getBoolFromNum(id, 5) || !getBoolFromNum(id, 21)) && 
+    (!getBoolFromNum(id, 15) || !getBoolFromNum(id, 18) || getBoolFromNum(id, 4)) && 
+    (!getBoolFromNum(id, 16) || getBoolFromNum(id, 9) || getBoolFromNum(id, 19)) && 
+    (getBoolFromNum(id, 12) || !getBoolFromNum(id, 10) || getBoolFromNum(id, 15)) && 
+    (getBoolFromNum(id, 14) || getBoolFromNum(id, 15) || getBoolFromNum(id, 13)) && 
+    (!getBoolFromNum(id, 10) || !getBoolFromNum(id, 11) || getBoolFromNum(id, 6)) && 
+    (getBoolFromNum(id, 24) || !getBoolFromNum(id, 23) || !getBoolFromNum(id, 17)) && 
+    (!getBoolFromNum(id, 21) || !getBoolFromNum(id, 15) || getBoolFromNum(id, 22)) && 
+    (!getBoolFromNum(id, 7) || !getBoolFromNum(id, 6) || getBoolFromNum(id, 2)) && 
+    (!getBoolFromNum(id, 1) || getBoolFromNum(id, 8) || getBoolFromNum(id, 24)) && 
+    (!getBoolFromNum(id, 13) || getBoolFromNum(id, 12) || getBoolFromNum(id, 9)) && 
+    (getBoolFromNum(id, 4) || !getBoolFromNum(id, 10) || !getBoolFromNum(id, 11)) && 
+    (!getBoolFromNum(id, 16) || !getBoolFromNum(id, 19) || getBoolFromNum(id, 1)) && 
+    (!getBoolFromNum(id, 17) || !getBoolFromNum(id, 11) || getBoolFromNum(id, 1)) && 
+    (getBoolFromNum(id, 17) || !getBoolFromNum(id, 6) || getBoolFromNum(id, 9)) && 
+    (getBoolFromNum(id, 14) || !getBoolFromNum(id, 2) || !getBoolFromNum(id, 21)) && 
+    (getBoolFromNum(id, 6) || getBoolFromNum(id, 23) || getBoolFromNum(id, 19))) ? 1 : 0
 end
 
 function satisfyKernel(A_d)
     id = (blockIdx().x - 1) * blockDim().x + threadIdx().x
-    if (id <= 1<<NBITS-1)
-        A_d[id] = check(id)
+    if (id <= 1<<NBITS)
+        A_d[id] = CUDAnativeCheck(id)
     end
     nothing
 end
+
+function satisfy_CUDAnative()
+    A_d = CUDA.zeros(Int64, 1<<NBITS)
+    @cuda blocks=1<<(NBITS-10) threads=1024 satisfyKernel(A_d)
+    synchronize()
+    reduction_CuArray(A_d)
+end
+
+function satisfyChunkKernel(A_d, idsPerThread)
+    @inbounds for i = 1:idsPerThread
+        id = ((blockIdx().x - 1) * blockDim().x + threadIdx().x) * idsPerThread - i + 1
+        if (id <= 1<<NBITS)
+            A_d[id] = CUDAnativeCheck(id)
+        end
+    end
+    nothing
+end
+
+function satisfy_CUDAnative_chunk(blockCount)
+    A_d = CUDA.zeros(Int64, 1<<NBITS)
+    @cuda blocks=blockCount threads=1024 satisfyChunkKernel(A_d, Int(ceil((1<<NBITS)/(1024*blockCount))))
+    synchronize()
+    reduction_CuArray(A_d)
+end
+
+
+println("satisfy:")
+@btime satisfy()
+
+println("satisfy_CUDAnative:")
+@btime satisfy_CUDAnative()
+
+println("satisfy_CUDAnative_chunk (1)")
+@btime satisfy_CUDAnative_chunk(1)
+
+println("satisfy_CUDAnative_chunk (168)")
+@btime satisfy_CUDAnative_chunk(168)
+
+println("satisfy_CUDAnative_chunk (4)")
+@btime satisfy_CUDAnative_chunk(4)
+
+println("satisfy_CUDAnative_chunk (64)")
+@btime satisfy_CUDAnative_chunk(64)
